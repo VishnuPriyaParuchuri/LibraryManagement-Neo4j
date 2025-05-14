@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.libraryManagement_neo4j.config.CustomResponse;
 import com.libraryManagement_neo4j.dto.UserServiceDTO;
+import com.libraryManagement_neo4j.model.UserCollection;
 import com.libraryManagement_neo4j.service.RegistrationService;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -47,4 +48,14 @@ public class RegistrationController {
 
         return registrationService.createUserInfo(userServiceDTO, req, res);
     }
+
+    @PostMapping("/user/authenticate")
+    public ResponseEntity<?> login(@RequestBody UserCollection userCollection, HttpServletRequest req,
+            HttpServletResponse res) {
+
+        System.out.println("email" + " " + userCollection.getEmail());
+
+        return registrationService.authenticateUser(userCollection, req, res);
+    }
+
 }

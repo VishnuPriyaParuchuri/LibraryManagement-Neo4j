@@ -2,19 +2,31 @@ package com.libraryManagement_neo4j.service;
 
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import com.libraryManagement_neo4j.config.CustomResponse;
 import com.libraryManagement_neo4j.dao.RegistrationDAO;
+import com.libraryManagement_neo4j.dto.UserInfoDTO;
 import com.libraryManagement_neo4j.dto.UserServiceDTO;
 import com.libraryManagement_neo4j.model.UserCollection;
+import com.libraryManagement_neo4j.utill.JwtTokenProvider;
 import com.libraryManagement_neo4j.utill.UserInfo;
 import com.libraryManagement_neo4j.utill.Utills;
 
@@ -40,8 +52,8 @@ public class RegistrationServiceImpl implements RegistrationService {
     @Autowired
     UserInfo userInfo;
 
-    // @Autowired
-    // JwtTokenProvider jwtTokenProvider;
+    @Autowired
+    JwtTokenProvider jwtTokenProvider;
 
     @Autowired
     AuthenticationManager authenticationManager;
@@ -129,4 +141,79 @@ public class RegistrationServiceImpl implements RegistrationService {
             return new ResponseEntity<>(responseBody, HttpStatus.BAD_REQUEST);
         }
     }
+
+    @Override
+    public ResponseEntity<?> authenticateUser(UserCollection userCollection, HttpServletRequest req,
+            HttpServletResponse res) {
+        try {
+            if (userCollection.getEmail().isBlank() || userCollection.getEmail().isEmpty()) {
+                String errorMessages = "Email is required!";
+
+                CustomResponse<String> responseBody = new CustomResponse<>(errorMessages, "BAD_REQUEST",
+                        HttpStatus.BAD_REQUEST.value(), req.getRequestURI(), LocalDateTime.now());
+
+                // If the user exists, return a message with a bad status
+                return new ResponseEntity<>(responseBody, HttpStatus.BAD_REQUEST);
+            }
+
+            if (userCollection.getPassword().isBlank() || userCollection.getPassword().isEmpty()) {
+                String errorMessages = "Password is required!";
+
+                CustomResponse<String> responseBody = new CustomResponse<>(errorMessages, "BAD_REQUEST",
+                        HttpStatus.BAD_REQUEST.value(), req.getRequestURI(), LocalDateTime.now());
+
+                // If the user exists, return a message with a bad status
+                return new ResponseEntity<>(responseBody, HttpStatus.BAD_REQUEST);
+            }
+
+            UserDetails userDetails = userInfo.loadUserByUsername(userCollection.getEmail());
+
+            System.out.println("userDetails" + " " + userDetails);
+
+            // Load the user by email
+            // Manually authenticate using the AuthenticationManager
+            Authentication authentication = authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(userCollection.getEmail(), userCollection.getPassword()));
+
+            SecurityContextHolder.getContext().setAuthentication(authentication);
+
+            // Optionally, generate a JWT token for the user (or manage sessions)
+            String token = jwtTokenProvider.generateToken(authentication);
+
+            System.out.println("token" + " " + token);
+
+            System.out.println("authentication" + " " + authentication);
+
+            // Prepare user details for the response
+            UserInfoDTO user = (UserInfoDTO) authentication.getPrincipal();
+            Map<String, Object> response = new HashMap<>();
+            response.put("token", token);
+            response.put("id", user.getId()); // Assuming you have a getId() method
+            response.put("username", user.getUserName());
+            response.put("email", user.getEmail());
+            response.put("roles",
+                    user.getAuthorities().stream().map(GrantedAuthority::getAuthority).collect(Collectors.toList()));
+
+            CustomResponse<?> responseBody = new CustomResponse<>(response, "SUCCESS", HttpStatus.OK.value(),
+                    req.getRequestURI(), LocalDateTime.now());
+
+            return new ResponseEntity<>(responseBody, HttpStatus.OK);
+        } catch (UsernameNotFoundException ex) {
+            // Handle case when user is not found
+            CustomResponse<String> responseBody = new CustomResponse<>("User details not found!", "BAD_CREDENTIALS",
+                    HttpStatus.UNAUTHORIZED.value(), req.getRequestURI(), LocalDateTime.now());
+            return new ResponseEntity<>(responseBody, HttpStatus.UNAUTHORIZED);
+        } catch (BadCredentialsException ex) {
+            // Handle case when credentials are invalid
+            CustomResponse<String> responseBody = new CustomResponse<>("Incorrect email or password", "BAD_CREDENTIALS",
+                    HttpStatus.UNAUTHORIZED.value(), req.getRequestURI(), LocalDateTime.now());
+            return new ResponseEntity<>(responseBody, HttpStatus.UNAUTHORIZED);
+        } catch (Exception ex) {
+            // Handle any other exceptions
+            CustomResponse<String> responseBody = new CustomResponse<>(ex.getMessage(), "ERROR",
+                    HttpStatus.INTERNAL_SERVER_ERROR.value(), req.getRequestURI(), LocalDateTime.now());
+            return new ResponseEntity<>(responseBody, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
 }
